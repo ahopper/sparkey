@@ -1,5 +1,10 @@
+// comment out this line to send midi over serial
+#define USEMIDI
+
+#ifdef USEMIDI
 #include <midi_serialization.h>
 #include <usbmidi.h>
+#endif
 #include <ADCTouch.h>
 
 enum playState{
@@ -41,6 +46,7 @@ const int KEY_PIN = 2;
 const int DIT_PIN = 3;
 const int DAH_PIN = 4;
 
+Stream *dataStream;
 bool lastKey = false;
 
 int buttonPins[BUTTON_PIN_COUNT] = { KEY_PIN, DIT_PIN, DAH_PIN };
@@ -67,15 +73,15 @@ paddle ditPaddle = {DIT_PIN, A0, 0, false};
 paddle dahPaddle = {DAH_PIN, A1, 0, false};
 
 void sendCC(uint8_t channel, uint8_t control, uint8_t value) {
-  USBMIDI.write(0xB0 | (channel & 0xf));
-  USBMIDI.write(control & 0x7f);
-  USBMIDI.write(value & 0x7f);
+  dataStream->write(0xB0 | (channel & 0xf));
+  dataStream->write(control & 0x7f);
+  dataStream->write(value & 0x7f);
 }
 
 void sendNoteDown(uint8_t channel, uint8_t note, uint8_t velocity) {
-  USBMIDI.write( 0x90  | (channel & 0xf));
-  USBMIDI.write(note & 0x7f);
-  USBMIDI.write(velocity &0x7f);
+  dataStream->write( 0x90  | (channel & 0xf));
+  dataStream->write(note & 0x7f);
+  dataStream->write(velocity &0x7f);
 }
 
 bool isButtonDown(int pin) {
@@ -116,7 +122,14 @@ void setup() {
 
   ditPaddle.analogOffset = ADCTouch.read(ditPaddle.analogPin);
   dahPaddle.analogOffset = ADCTouch.read(dahPaddle.analogPin);
-//  Serial.begin(9600);
+#ifdef USEMIDI
+  dataStream = &USBMIDI;
+#else  
+//  Serial.begin(31250);
+    Serial.begin(115200);
+  dataStream = &Serial;
+  
+#endif
 }
 
 bool getNextState(playState* state)
@@ -173,12 +186,14 @@ void clearKeyState()
 
 void loop() {
   //Handle USB communication
+#ifdef USEMIDI
   USBMIDI.poll();
+#endif
 
-  while (USBMIDI.available()) {
+  while (dataStream->available()) {
     // We must read entire available data, so in case we receive incoming
     // MIDI data, the host wouldn't get stuck.
-    u8 b = USBMIDI.read();
+    u8 b = dataStream->read();
   }
 
   // straight key or keyer input sent directly to midi
@@ -263,5 +278,5 @@ void loop() {
   }
 
   // Flush the output.
-  USBMIDI.flush(); 
+  dataStream->flush(); 
 }
