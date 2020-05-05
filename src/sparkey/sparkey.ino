@@ -65,7 +65,7 @@ bool keyStateUsed = false;
 
 bool extraChar = false;
 
-// if both set true, the firat to detect a change will be used
+// if both set true, the first to detect a change will be used
 bool useTouch = true;
 bool useDigital = true;
 
