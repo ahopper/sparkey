@@ -1,11 +1,14 @@
-// comment out this line to send midi over serial
-#define USEMIDI
+// use one of below for serial or real usb midi
 
-#ifdef USEMIDI
-#include <midi_serialization.h>
-#include <usbmidi.h>
-#endif
+//#include <MIDI.h> // Include MIDI Library
+//MIDI_CREATE_DEFAULT_INSTANCE();
+
+#include <USB-MIDI.h>
+USBMIDI_CREATE_DEFAULT_INSTANCE();
+
 #include <ADCTouch.h>
+
+
 
 enum playState{
   playdit,
@@ -46,7 +49,6 @@ const int KEY_PIN = 2;
 const int DIT_PIN = 3;
 const int DAH_PIN = 4;
 
-Stream *dataStream;
 bool lastKey = false;
 
 int buttonPins[BUTTON_PIN_COUNT] = { KEY_PIN, DIT_PIN, DAH_PIN };
@@ -72,17 +74,6 @@ bool useDigital = true;
 paddle ditPaddle = {DIT_PIN, A0, 0, false};
 paddle dahPaddle = {DAH_PIN, A1, 0, false};
 
-void sendCC(uint8_t channel, uint8_t control, uint8_t value) {
-  dataStream->write(0xB0 | (channel & 0xf));
-  dataStream->write(control & 0x7f);
-  dataStream->write(value & 0x7f);
-}
-
-void sendNoteDown(uint8_t channel, uint8_t note, uint8_t velocity) {
-  dataStream->write( 0x90  | (channel & 0xf));
-  dataStream->write(note & 0x7f);
-  dataStream->write(velocity &0x7f);
-}
 
 bool isButtonDown(int pin) {
   return digitalRead(pin) == 0;
@@ -107,29 +98,8 @@ bool readPaddle(paddle* pad){
 
 void setKey(bool down)
 {
-    sendNoteDown(0, 64 , down ? 127:0);
+    MIDI.sendNoteOn( 64 , down ? 127:0,1);
     lastKeyChange = now;
-}
-
-void setup() {
- 
-  for (int i=0; i<BUTTON_PIN_COUNT; ++i) {
-    pinMode(buttonPins[i], INPUT);
-    digitalWrite(buttonPins[i], HIGH);
-    buttonDown[i] = isButtonDown(buttonPins[i]);
-  }
-  lastKeyChange = millis();
-
-  ditPaddle.analogOffset = ADCTouch.read(ditPaddle.analogPin);
-  dahPaddle.analogOffset = ADCTouch.read(dahPaddle.analogPin);
-#ifdef USEMIDI
-  dataStream = &USBMIDI;
-#else  
-//  Serial.begin(31250);
-    Serial.begin(115200);
-  dataStream = &Serial;
-  
-#endif
 }
 
 bool getNextState(playState* state)
@@ -144,7 +114,6 @@ bool getNextState(playState* state)
       break; 
     case dah:
       *state=playdah;
- //     Serial.write("dah\n");
       break; 
     case ditdah:
       *state = lastPlayed == playdah ? playdit : playdah;
@@ -180,21 +149,27 @@ void clearKeyState()
 {
    kState = idle;
    lastPlayed = playidle;
-  // Serial.write("clear\n");
- 
+}
+
+void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+  for (int i=0; i<BUTTON_PIN_COUNT; ++i) {
+    pinMode(buttonPins[i], INPUT);
+    digitalWrite(buttonPins[i], HIGH);
+    buttonDown[i] = isButtonDown(buttonPins[i]);
+  }
+  lastKeyChange = millis();
+
+  ditPaddle.analogOffset = ADCTouch.read(ditPaddle.analogPin);
+  dahPaddle.analogOffset = ADCTouch.read(dahPaddle.analogPin);
+  MIDI.begin(MIDI_CHANNEL_OMNI); 
+
 }
 
 void loop() {
   //Handle USB communication
-#ifdef USEMIDI
-  USBMIDI.poll();
-#endif
-
-  while (dataStream->available()) {
-    // We must read entire available data, so in case we receive incoming
-    // MIDI data, the host wouldn't get stuck.
-    u8 b = dataStream->read();
-  }
+  
+  MIDI.read();
 
   // straight key or keyer input sent directly to midi
   bool down = isButtonDown(KEY_PIN);
@@ -205,6 +180,7 @@ void loop() {
   }
 
   now = millis();
+  
   unsigned long tdelta = now - lastKeyChange;
 
   // play keyer output
@@ -277,6 +253,4 @@ void loop() {
     clearKeyState();
   }
 
-  // Flush the output.
-  dataStream->flush(); 
 }
